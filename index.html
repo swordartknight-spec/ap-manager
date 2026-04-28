@@ -533,6 +533,182 @@ const dlCSV = (rows,filename) => {
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=filename; a.click()
 }
 
+// ════════════ EXCEL IMPORT / EXPORT ════════════
+// Load SheetJS dynamically
+const loadSheetJS = () => new Promise((resolve,reject) => {
+  if(window.XLSX){resolve(window.XLSX);return}
+  const s=document.createElement('script')
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+  s.onload=()=>resolve(window.XLSX)
+  s.onerror=reject
+  document.head.appendChild(s)
+})
+
+// ── EXPORT ──────────────────────────────────────────
+window.exportExcel = async () => {
+  const XLSX = await loadSheetJS()
+  const month = val('bill-month') || getMonthOpts()[0].key
+  const mn = getMonthOpts().find(o=>o.key===month)?.lbl || month
+  const md = STATE.meters[month] || {}
+  const wr = STATE.cfg.water, er = STATE.cfg.elec
+
+  // Header rows
+  const header1 = ['เดือน :', mn, '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+  const header2 = ['ห้อง','ชื่อผู้เช่า','จดครั้งก่อน','จดครั้งนี้','หน่วย','รวมเป็นเงิน','จดครั้งก่อน','จดครั้งนี้','หน่วย','รวมเป็นเงิน','ค่าเช่าห้อง','ค่าอดรด','รวมเป็นเงิน','วันที่จ่าย','ผู้รับเงิน 1','หมายเหตุ']
+
+  const rows = [header1, header2]
+
+  ALL_ROOMS.forEach(r => {
+    const t = STATE.tenants[String(r)]
+    const m = md[String(r)] || {wp:0,wc:0,ep:0,ec:0}
+    const wu = Math.max(0,(m.wc||0)-(m.wp||0))
+    const eu = Math.max(0,(m.ec||0)-(m.ep||0))
+    const wamt = Math.round(wu*wr)
+    const eamt = Math.round(eu*er)
+    const rent = Number(t?.rent||0)
+    const total = rent + wamt + eamt
+    rows.push([
+      r,
+      t?.name || '',
+      m.wp || 0, m.wc || 0, wr, wamt,
+      m.ep || 0, m.ec || 0, er, eamt,
+      rent, 0, total,
+      '', '', ''
+    ])
+  })
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:6},{wch:22},{wch:12},{wch:12},{wch:8},{wch:12},
+    {wch:12},{wch:12},{wch:8},{wch:12},{wch:12},{wch:10},{wch:14},{wch:12},{wch:14},{wch:14}
+  ]
+
+  // Merge header cells for น้ำ / ไฟ groups
+  ws['!merges'] = [
+    {s:{r:1,c:2},e:{r:1,c:5}}, // น้ำ
+    {s:{r:1,c:6},e:{r:1,c:9}}, // ไฟ
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, mn)
+  XLSX.writeFile(wb, `บิล_${month.replace('/','_')}.xlsx`)
+  toast('Export Excel สำเร็จ ✓')
+}
+
+// ── IMPORT ──────────────────────────────────────────
+window.triggerImport = () => $('import-excel-input').click()
+
+window.importExcel = async (event) => {
+  const file = event.target.files[0]; if(!file) return
+  const XLSX = await loadSheetJS()
+
+  const reader = new FileReader()
+  reader.onload = async (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'})
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''})
+
+      // Find month from cell A1 if exists
+      const monthRow = raw[0]
+      let importMonth = getMonthOpts()[0].key
+      if(monthRow && String(monthRow[1]).includes('2')) {
+        // try to parse month from header
+      }
+      importMonth = val('bill-month') || importMonth
+
+      // Find data rows — skip header rows (first 2 rows)
+      let dataStart = 0
+      for(let i=0;i<raw.length;i++) {
+        const cell = String(raw[i][0])
+        if(cell && !isNaN(parseInt(cell)) && parseInt(cell) >= 101) { dataStart=i; break }
+      }
+
+      const updates = { tenants:{}, meters:{}, rooms:{} }
+      let count = 0
+
+      for(let i=dataStart; i<raw.length; i++) {
+        const row = raw[i]
+        const roomNum = parseInt(row[0])
+        if(!roomNum || roomNum < 100) continue
+
+        const name    = String(row[1]||'').trim()
+        const wp      = parseFloat(row[2])||0   // น้ำก่อน
+        const wc      = parseFloat(row[3])||0   // น้ำหลัง
+        const wr      = parseFloat(row[4])||STATE.cfg.water  // หน่วยน้ำ
+        const ep      = parseFloat(row[6])||0   // ไฟก่อน
+        const ec      = parseFloat(row[7])||0   // ไฟหลัง
+        const er      = parseFloat(row[8])||STATE.cfg.elec   // หน่วยไฟ
+        const rent    = parseFloat(row[10])||0  // ค่าเช่า
+
+        // Update meter data
+        updates.meters[String(roomNum)] = {wp,wc,ep,ec}
+
+        // Update tenant if name exists
+        if(name) {
+          const existing = STATE.tenants[String(roomNum)] || {}
+          updates.tenants[String(roomNum)] = {
+            ...existing,
+            id: String(roomNum),
+            name, rent,
+            wm: wp, em: ep
+          }
+        }
+
+        count++
+      }
+
+      // Confirm before overwrite
+      if(!confirm(`พบข้อมูล ${count} ห้อง\nยืนยันนำเข้า? (จะเขียนทับข้อมูลเดิม)`)) {
+        event.target.value=''; return
+      }
+
+      toast('กำลังนำเข้าข้อมูล...','info')
+
+      // Save meters to Firebase
+      if(!STATE.meters[importMonth]) STATE.meters[importMonth]={}
+      for(const [id, m] of Object.entries(updates.meters)) {
+        await setDoc(doc(db,'meters',importMonth,'rooms',id), m, {merge:true})
+        STATE.meters[importMonth][id] = m
+      }
+
+      // Save tenants to Firebase
+      for(const [id, t] of Object.entries(updates.tenants)) {
+        await db_set('tenants', id, t)
+        STATE.tenants[id] = t
+        // Mark room as occupied if has tenant name
+        if(t.name) {
+          await db_set('rooms', id, {status:'occupied'})
+          if(STATE.rooms[id]) STATE.rooms[id].status='occupied'
+        }
+      }
+
+      // Update cfg rates if detected
+      const firstDataRow = raw[dataStart]
+      if(firstDataRow) {
+        const detectedWr = parseFloat(firstDataRow[4])
+        const detectedEr = parseFloat(firstDataRow[8])
+        if(detectedWr>0) STATE.cfg.water=detectedWr
+        if(detectedEr>0) STATE.cfg.elec=detectedEr
+        await db_set('config','default',STATE.cfg)
+      }
+
+      toast(`นำเข้าสำเร็จ ${count} ห้อง ✓`)
+      event.target.value=''
+      renderPage()
+      renderDash()
+
+    } catch(err) {
+      toast('ไฟล์ไม่ถูกต้อง: '+err.message, 'error')
+      console.error(err)
+      event.target.value=''
+    }
+  }
+  reader.readAsArrayBuffer(file)
+}
+
 // ════════════ MODAL HELPERS ════════════
 window.openModal = (id) => { const el=$(id); if(el) el.style.display='flex' }
 window.closeModal = (id) => { const el=$(id); if(el) el.style.display='none' }
@@ -759,7 +935,10 @@ select.fi option{background:var(--surface2);}textarea.fi{resize:vertical;}
       <div id="billing-page" class="page">
         <div class="fbar">
           <select class="fi" id="bill-month" onchange="onBillMonthChange()" style="width:165px"></select>
+          <button class="btn btn-p btn-sm" onclick="exportExcel()">⬇ Export Excel</button>
+          <button class="btn btn-sm" onclick="triggerImport()">⬆ Import Excel</button>
           <button class="btn btn-sm" onclick="exportBillCSV()">Export CSV</button>
+          <input type="file" id="import-excel-input" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)">
         </div>
         <div class="tab-bar">
           <div class="tab active" onclick="setBillTab('all',this)">ทั้งหมด</div>
