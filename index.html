@@ -70,6 +70,7 @@ const loadAll = async () => {
   if(cfgDoc) STATE.cfg={...STATE.cfg,...cfgDoc}
   // Seed rooms if empty
   if(Object.keys(rm).length<45) await seedRooms()
+  await seedTenants()
   hide('loading-overlay')
   renderPage()
 }
@@ -83,6 +84,69 @@ const seedRooms = async () => {
       }
     }
   }
+}
+
+// ════════════ TENANT SEED DATA ════════════
+const TENANT_DATA = [
+  {room:201,name:'นิรันดร์ คูอนันตเวชกุล',phone:'0840864686',rent:4000},
+  {room:202,name:'วชิรินทรา แสนสีมนต์',phone:'0807793241',rent:4000},
+  {room:203,name:'ธรรพ์ณธร ศรีเหรา',phone:'0837102648',rent:4000},
+  {room:204,name:'พิชญ์สินี คีรีกิ้น',phone:'0955756436',rent:4000},
+  {room:205,name:'อภัสรา ขันคำ',phone:'0822924314',rent:4000},
+  {room:207,name:'ละเอียด เอี่ยมสะอาด',phone:'0985286080',rent:4000},
+  {room:209,name:'ดลพร เณรเทียน',phone:'0892219822',rent:4000},
+  {room:210,name:'ดวงพร ชะหมู่',phone:'0951647580',rent:4500},
+  {room:211,name:'สายชล ประเสริฐสาร',phone:'0934155586',rent:4000},
+  {room:212,name:'พีท อ่อนทอง',phone:'0639646151',rent:4500},
+  {room:213,name:'กัญญารัตน์ มาท้ายน้ำ',phone:'0979218241',rent:4500},
+  {room:214,name:'ชนิดา รังกระโทก',phone:'0981429294',rent:4500},
+  {room:215,name:'',phone:'',rent:4500},
+  {room:301,name:'ปัจมาภรณ์',phone:'0940976759',rent:4000},
+  {room:302,name:'พชรมน สุขสว่าง',phone:'0633944229',rent:4000},
+  {room:305,name:'คงเดช มึอินถา',phone:'0989193762',rent:4500},
+  {room:306,name:'นายศิริวัฒน์ คำภาทู',phone:'0639715126',rent:4000},
+  {room:307,name:'โชษิตา ปิติทานันท์',phone:'0944620199',rent:4000},
+  {room:308,name:'ปานรดา อธินารานนท์',phone:'0988326268',rent:4000},
+  {room:310,name:'จุฬามณี ดียิ่ง',phone:'0987083805',rent:4000},
+  {room:311,name:'ศตณัฎ สังข์แก้ว',phone:'0957528288',rent:4000},
+  {room:312,name:'น.ส.นวกาญจน์ ศรีเมือง',phone:'0934671145',rent:4000},
+  {room:313,name:'แพรว ทัดไทย',phone:'0658781094',rent:4000},
+  {room:314,name:'กรวิชญ์ โคศรีเพชร',phone:'0841600951',rent:4000},
+  {room:315,name:'ชรินทร์ทิพย์ มาตย์ปัญญา',phone:'0809945153',rent:4000},
+  {room:401,name:'มัชศริณฎา ปะมา',phone:'0910204389',rent:4000},
+  {room:402,name:'นางสาวปัญฑิตา จันทรักษ์',phone:'0985551855',rent:4500},
+  {room:403,name:'นางสาวกฤติยา โสภิณ',phone:'0967909444',rent:4000},
+  {room:404,name:'กล้วย',phone:'0660747631',rent:4000},
+  {room:405,name:'พรรณกร ทองทิพย์',phone:'0823733593',rent:4000},
+  {room:406,name:'น.ส.ศรินภรณ์ ศิริพันธุ์',phone:'0813869941',rent:4000},
+  {room:407,name:'ศิรดา ชัยวงษ์ษา',phone:'0963929468',rent:4000},
+  {room:408,name:'พรหมภัสสร วงษ์จันทร์',phone:'0615165149',rent:4000},
+  {room:409,name:'นันธิชา แก้วคนตรง',phone:'0649311172',rent:4000},
+  {room:410,name:'ธงไชย บุญวาที / ดา',phone:'0987200992',rent:4000},
+  {room:411,name:'นางสาวศิรินทร สายป๋า',phone:'0961641452',rent:4000},
+  {room:412,name:'วริทธิ เรืองรอง',phone:'0822997797',rent:4000},
+  {room:413,name:'ทรงวุฒิ บุตรศรีด้วง',phone:'0877055951',rent:4000},
+  {room:415,name:'กฤษฎา จะยินรัมย์',phone:'0927247971',rent:4000},
+]
+
+const seedTenants = async () => {
+  let count = 0
+  for(const t of TENANT_DATA) {
+    if(!t.name) continue
+    const existing = STATE.tenants[String(t.room)]
+    if(!existing || !existing.name) {
+      await db_set('tenants', t.room, {
+        id: String(t.room), name: t.name, phone: t.phone,
+        rent: t.rent, idCard: '', startDate: '-', startDateRaw: '',
+        wm: 0, em: 0, note: ''
+      })
+      await db_set('rooms', t.room, {status: 'occupied'})
+      STATE.tenants[String(t.room)] = {id:String(t.room),...t}
+      STATE.rooms[String(t.room)].status = 'occupied'
+      count++
+    }
+  }
+  if(count > 0) console.log(`Seeded ${count} tenants`)
 }
 
 const logAct = async (room,action) => {
