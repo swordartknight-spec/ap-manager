@@ -251,7 +251,7 @@ window.openRoom = (room) => {
   $('rm-title').textContent=`ห้อง ${room} · ชั้น ${Math.floor(room/100)}`
   $('rm-status').innerHTML=sm[r?.status]||''
   $('rm-note').value=r?.note||''
-  $('rm-info').innerHTML=t?`<div class="mrow"><span class="mrl">ผู้เช่า</span><span class="mrv">${t.name}</span></div><div class="mrow"><span class="mrl">โทรศัพท์</span><span class="mrv">${t.phone}</span></div><div class="mrow"><span class="mrl">ค่าเช่า/เดือน</span><span class="mrv">฿${money(t.rent)}</span></div><div class="mrow"><span class="mrl">เริ่มเช่า</span><span class="mrv">${t.startDate||'-'}</span></div>${t.checkoutDate?`<div class="mrow"><span class="mrl" style="color:var(--warn)">แจ้งออกวันที่</span><span class="mrv" style="color:var(--warn)">${t.checkoutDate}</span></div>`:''}`:'<div style="color:var(--text-muted);font-size:12px;padding:8px 0">ห้องว่าง</div>'
+  $('rm-info').innerHTML=t?`<div class="mrow"><span class="mrl">ผู้เช่า</span><span class="mrv">${t.name}</span></div><div class="mrow"><span class="mrl">โทรศัพท์</span><span class="mrv">${t.phone}</span></div><div class="mrow"><span class="mrl">ค่าเช่า/เดือน</span><span class="mrv">฿${money(t.rent)}</span></div><div class="mrow"><span class="mrl">ค่าประกัน</span><span class="mrv" style="color:var(--accent)">฿${money(t.deposit||0)}</span></div><div class="mrow"><span class="mrl">เริ่มเช่า</span><span class="mrv">${t.startDate||'-'}</span></div>${t.checkoutDate?`<div class="mrow"><span class="mrl" style="color:var(--warn)">แจ้งออกวันที่</span><span class="mrv" style="color:var(--warn)">${t.checkoutDate}</span></div>`:''}`:'<div style="color:var(--text-muted);font-size:12px;padding:8px 0">ห้องว่าง</div>'
   let foot=''
   const s=r?.status
   if(s==='vacant') foot=`<button class="btn btn-p btn-sm" onclick="closeModal('room-modal');openCheckinRoom(${room})">+ เพิ่มผู้เช่า</button><button class="btn btn-w btn-sm" onclick="setRoomStatus(${room},'maintenance')">ส่งซ่อม</button>`
@@ -298,8 +298,10 @@ window.saveTenant = async () => {
   const room=parseInt(val('ci-room')), fn=val('ci-fn').trim(), ln=val('ci-ln').trim()
   const ph=val('ci-ph').trim(), id=val('ci-id').trim(), rent=val('ci-rent'), start=val('ci-start')
   const wm=parseFloat(val('ci-wm'))||0, em=parseFloat(val('ci-em'))||0, note=val('ci-note')
+  const depPaid=parseFloat(val('ci-dep-paid'))||0
+  const totalDeposit=(STATE.cfg.deposit||9000)
   if(!fn||!ph||!rent){toast('กรุณากรอกชื่อ โทรศัพท์ และค่าเช่า','error');return}
-  const tData={name:`${fn} ${ln}`,phone:ph,idCard:id,rent,startDate:fmt(start),startDateRaw:start,wm,em,note}
+  const tData={name:`${fn} ${ln}`,phone:ph,idCard:id,rent,startDate:fmt(start),startDateRaw:start,wm,em,note,deposit:totalDeposit,depositPaid1:depPaid}
   await db_set('tenants',room,tData); await db_set('rooms',room,{status:'occupied'})
   STATE.tenants[String(room)]=tData; STATE.rooms[String(room)].status='occupied'
   await logAct(room,`${fn} ${ln} เข้าพัก`)
@@ -337,12 +339,13 @@ window.openEdit = (room) => {
   STATE.editRoom=room; const t=STATE.tenants[String(room)]; if(!t) return
   setVal('ed-name',t.name||''); setVal('ed-ph',t.phone||''); setVal('ed-id',t.idCard||'')
   setVal('ed-rent',t.rent||''); setVal('ed-start',t.startDateRaw||''); setVal('ed-note',t.note||'')
+  setVal('ed-deposit',t.deposit||'')
   closeModal('room-modal'); openModal('edit-modal')
 }
 window.saveEdit = async () => {
   const room=STATE.editRoom, t=STATE.tenants[String(room)]; if(!t) return
   const sd=val('ed-start')
-  const upd={...t,name:val('ed-name'),phone:val('ed-ph'),idCard:val('ed-id'),rent:val('ed-rent'),startDate:sd?fmt(sd):t.startDate,startDateRaw:sd||t.startDateRaw,note:val('ed-note')}
+  const upd={...t,name:val('ed-name'),phone:val('ed-ph'),idCard:val('ed-id'),rent:val('ed-rent'),deposit:parseFloat(val('ed-deposit'))||0,startDate:sd?fmt(sd):t.startDate,startDateRaw:sd||t.startDateRaw,note:val('ed-note')}
   await db_set('tenants',room,upd); STATE.tenants[String(room)]=upd
   await logAct(room,'แก้ไขข้อมูลผู้เช่า')
   closeModal('edit-modal'); toast('บันทึกแล้ว ✓'); renderTenants()
@@ -354,7 +357,7 @@ const renderTenants = () => {
   const rows=Object.values(STATE.tenants).filter(t=>(!s||(t.name||'').toLowerCase().includes(s)||String(t.id||'').includes(s))&&(!fl||String(Math.floor((t.id||0)/100))===fl))
   $('tenant-body').innerHTML=rows.length?rows.map(t=>{
     const st=STATE.rooms[String(t.id)]?.status
-    return`<tr><td style="font-family:var(--mono);font-weight:700;color:var(--primary)">ห้อง ${t.id}</td><td>${t.name}</td><td>${t.phone}</td><td style="font-family:var(--mono);color:var(--text-muted);font-size:11px">${t.idCard||'-'}</td><td>${t.startDate||'-'}</td><td>฿${money(t.rent)}</td><td><span class="badge ${st==='overdue'?'br':'bo'}">${st==='overdue'?'ค้างชำระ':'ปกติ'}</span></td><td style="display:flex;gap:4px"><button class="btn btn-xs" onclick="openRoom(${t.id})">ดู</button><button class="btn btn-xs" onclick="openEdit(${t.id})">แก้ไข</button></td></tr>`
+    return`<tr><td style="font-family:var(--mono);font-weight:700;color:var(--primary)">ห้อง ${t.id}</td><td>${t.name}</td><td>${t.phone}</td><td style="font-family:var(--mono);color:var(--text-muted);font-size:11px">${t.idCard||'-'}</td><td>${t.startDate||'-'}</td><td>฿${money(t.rent)}</td><td>${t.deposit?'<span style="color:var(--accent)">฿'+money(t.deposit)+'</span>':'<span style="color:var(--text-dim)">-</span>'}</td><td><span class="badge ${st==='overdue'?'br':'bo'}">${st==='overdue'?'ค้างชำระ':'ปกติ'}</span></td><td style="display:flex;gap:4px"><button class="btn btn-xs" onclick="openRoom(${t.id})">ดู</button><button class="btn btn-xs" onclick="openEdit(${t.id})">แก้ไข</button></td></tr>`
   }).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">ไม่มีผู้เช่า</td></tr>`
 }
 
@@ -1048,7 +1051,7 @@ select.fi option{background:var(--surface2);}textarea.fi{resize:vertical;}
           <input class="fi" id="s-tenant" placeholder="ค้นหาชื่อ / ห้อง..." oninput="renderTenants()" style="width:180px">
           <select class="fi" id="f-floor" onchange="renderTenants()" style="width:110px"><option value="">ทุกชั้น</option><option value="1">ชั้น 1</option><option value="2">ชั้น 2</option><option value="3">ชั้น 3</option><option value="4">ชั้น 4</option></select>
         </div>
-        <div class="card tbl-wrap"><table><thead><tr><th>ห้อง</th><th>ชื่อ-นามสกุล</th><th>โทรศัพท์</th><th>เลขบัตร</th><th>เริ่มเช่า</th><th>ค่าเช่า</th><th>สถานะ</th><th></th></tr></thead><tbody id="tenant-body"></tbody></table></div>
+        <div class="card tbl-wrap"><table><thead><tr><th>ห้อง</th><th>ชื่อ-นามสกุล</th><th>โทรศัพท์</th><th>เลขบัตร</th><th>เริ่มเช่า</th><th>ค่าเช่า</th><th>ค่าประกัน</th><th>สถานะ</th><th></th></tr></thead><tbody id="tenant-body"></tbody></table></div>
       </div>
 
       <!-- BOOKING -->
@@ -1210,7 +1213,8 @@ select.fi option{background:var(--surface2);}textarea.fi{resize:vertical;}
   <div class="mb2">
     <div class="fg"><label class="fl">ชื่อ-นามสกุล</label><input class="fi" id="ed-name"></div>
     <div class="fr"><div class="fg"><label class="fl">โทรศัพท์</label><input class="fi" id="ed-ph"></div><div class="fg"><label class="fl">เลขบัตร</label><input class="fi" id="ed-id"></div></div>
-    <div class="fr"><div class="fg"><label class="fl">ค่าเช่า (฿)</label><input class="fi" id="ed-rent" type="number"></div><div class="fg"><label class="fl">วันเริ่มเช่า</label><input class="fi" id="ed-start" type="date"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">ค่าเช่า (฿)</label><input class="fi" id="ed-rent" type="number"></div><div class="fg"><label class="fl">ค่าประกัน (฿)</label><input class="fi" id="ed-deposit" type="number" placeholder="0"></div></div>
+    <div class="fr"><div class="fg"><label class="fl">วันเริ่มเช่า</label><input class="fi" id="ed-start" type="date"></div><div class="fg"></div></div>
     <div class="fg"><label class="fl">หมายเหตุ</label><textarea class="fi" id="ed-note" rows="2"></textarea></div>
   </div>
   <div class="mf"><button class="btn" onclick="closeModal('edit-modal')">ยกเลิก</button><button class="btn btn-p" onclick="saveEdit()">บันทึก</button></div>
