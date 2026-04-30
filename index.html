@@ -199,8 +199,8 @@ const METER_APR = [
 
 const seedMeters = async () => {
   const months = [
-    {key:'03/2025', data:METER_MAR},
-    {key:'04/2025', data:METER_APR},
+    {key:'03-2025', data:METER_MAR},
+    {key:'04-2025', data:METER_APR},
   ]
   for(const {key, data} of months) {
     // Check if already seeded
@@ -466,7 +466,7 @@ window.cancelBookingRoom = (room) => { const b=STATE.bookings.find(x=>x.room==ro
 // ════════════ METER ════════════
 const getMonthOpts = () => {
   const now=new Date()
-  return Array.from({length:14},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()+2-i,1);const key=`${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;const lbl=`${MONTHS_TH[d.getMonth()]} ${d.getFullYear()+543}`;return{key,lbl}})
+  return Array.from({length:14},(_,i)=>{const d=new Date(now.getFullYear(),now.getMonth()+2-i,1);const key=`${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;const lbl=`${MONTHS_TH[d.getMonth()]} ${d.getFullYear()+543}`;return{key,lbl}})
 }
 const renderMeter = async () => {
   const opts=getMonthOpts()
@@ -530,8 +530,8 @@ window.saveAllMeters = async () => {
   toast(`บันทึกมิเตอร์ ${saved} ห้องแล้ว ✓`)
 }
 window.carryForward = async () => {
-  const month=val('meter-month'); const [mm,yy]=month.split('/'); let nm=parseInt(mm)+1,ny=parseInt(yy); if(nm>12){nm=1;ny++}
-  const next=`${String(nm).padStart(2,'0')}/${ny}`; const md=STATE.meters[month]||{}
+  const month=val('meter-month'); const [mm,yy]=month.split('-'); let nm=parseInt(mm)+1,ny=parseInt(yy); if(nm>12){nm=1;ny++}
+  const next=`${String(nm).padStart(2,'0')}-${ny}`; const md=STATE.meters[month]||{}
   for(const [id,m] of Object.entries(md)) await setDoc(doc(db,'meters',next,'rooms',id),{wp:m.wc||0,wc:m.wc||0,ep:m.ec||0,ec:m.ec||0},{merge:true})
   toast(`ยกยอดไปเดือน ${MONTHS_TH[nm-1]} ${ny+543} แล้ว ✓`)
 }
@@ -641,7 +641,7 @@ window.exportBillCSV = () => {
   const month=val('bill-month'), md=STATE.meters[month]||{}, wr=STATE.cfg.water, er=STATE.cfg.elec
   const rows=[['ห้อง','ผู้เช่า','โทรศัพท์','ค่าเช่า','หน่วยน้ำ','ค่าน้ำ','หน่วยไฟ','ค่าไฟ','รวม','สถานะ']]
   Object.values(STATE.tenants).forEach(t=>{const m=md[String(t.id)]||{wp:0,wc:0,ep:0,ec:0};const wu=Math.max(0,(m.wc||0)-(m.wp||0)),eu=Math.max(0,(m.ec||0)-(m.ep||0));const wamt=Math.round(wu*wr),eamt=Math.round(eu*er),total=Math.round(Number(t.rent)+wamt+eamt);const s=STATE.rooms[String(t.id)]?.status;rows.push([t.id,t.name,t.phone,t.rent,wu,wamt,eu,eamt,total,s==='occupied'?'ชำระแล้ว':'ค้างชำระ'])})
-  dlCSV(rows,`bill_${month.replace('/','_')}.csv`)
+  dlCSV(rows,`bill_${month.replace('-','_')}.csv`)
 }
 
 // ════════════ REPAIR ════════════
@@ -805,7 +805,7 @@ window.exportExcel = async () => {
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, mn)
-  XLSX.writeFile(wb, `บิล_${month.replace('/','_')}.xlsx`)
+  XLSX.writeFile(wb, `บิล_${month.replace('-','_')}.xlsx`)
   toast('Export Excel สำเร็จ ✓')
 }
 
